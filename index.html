@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Block Matching Lab</title>
+<link rel="stylesheet" href="css/styles.css">
+</head><body>
+
+<header><h1>Block Matching Lab</h1><nav><a href="#intro">Welcome</a><a href="#lab">Laboratory</a><a href="#perf">Performance</a><a href="#learn">Learn</a></nav></header>
+
+<section id="intro"><h2>Welcome</h2>
+<p>Video codecs save space by describing each block of a frame as a <i>shifted copy</i> of a block in the previous frame. Finding that shift is <b>motion estimation</b>. Here you pick a short pixel-art animation, choose a block, and watch three search strategies hunt for its best match: One-at-a-Time, Ghanbari’s Cross Search, and Full Search. Guided mode quizzes you at each step; Auto mode plays it for you. Every SAD value is computed from the real pixels you see.</p></section>
+
+<section id="lab"><div class="lab"><div>
+<div class="card"><h4>1 · Video selection</h4>
+<div class="row"><select id="sc"></select><button id="play">Play</button><button id="fp">◀ Frame</button><button id="fn">Frame ▶</button>
+<input type="range" id="fr" min="1" max="23" value="6"><span id="fl" class="muted"></span></div>
+<div class="row muted">Block <select id="bs"><option>4</option><option selected>8</option><option>16</option></select>
+Search range ± <select id="ws"><option>2</option><option>3</option><option selected>4</option><option>6</option><option>8</option></select>
+Metric <select id="ms"><option value="0">SAD</option><option value="1">MAD (mean absolute)</option><option value="2">MSD (mean squared)</option></select><button id="ab">Pick moving block</button></div></div>
+<div class="card"><h4>2 · Reference block &nbsp;3 · Search area</h4>
+<div class="frames"><figure><canvas id="cc" width="256" height="256"></canvas><figcaption>Current frame — click to choose the reference block</figcaption></figure>
+<figure><canvas id="pc" width="256" height="256"></canvas><figcaption>Previous frame (search frame). Dashed cyan = search area, green arrow = motion vector</figcaption></figure>
+<figure><canvas id="gc"></canvas><figcaption>Search window: each cell is a shift (dx,dy). Cyan arrows = search path, green arrow = motion vector</figcaption></figure></div>
+<div class="muted" style="font-size:13px">Goal: find the block in the previous frame with the <b>smallest SAD</b> against the reference block.
+<span class="sw" style="background:var(--ref)"></span>reference<span class="sw" style="background:var(--cand)"></span>candidate(s) this step<span class="sw" style="background:#3a3f4d"></span>already evaluated<span class="sw" style="background:var(--best)"></span>best</div></div>
+<div class="card"><h4>Demonstration</h4>
+<div class="row" id="tabs"><!-- algorithm tabs are generated from the registry --></div>
+<div class="row"><button id="st">Start</button><button id="pa">Pause</button><button id="pv">◀ Previous</button><button id="nx">Next ▶</button><button id="rs">Reset</button>
+<select id="md"><option value="guided">Guided mode</option><option value="auto">Automatic mode</option></select>Speed <input type="range" id="sp" min="1" max="10" value="5" style="width:90px"><label class="muted"><input type="checkbox" id="mvt" checked> Show motion vectors</label></div>
+<progress id="pg" value="0" max="100"></progress><div id="qb" style="margin-top:8px"></div></div></div>
+<aside class="right"><div class="card"><h4>Live computation panel</h4><table id="pn"></table></div>
+<div class="card"><h4>Computation log</h4><div id="log"></div></div></aside></div></section>
+
+<section id="perf"><h2>Performance comparison</h2>
+<p class="muted">All algorithms run on the same frames, block, range and metric. Times are averages over 300 repeated runs, measured with <code>performance.now()</code> in a separate benchmark loop (no drawing, no tracing). Results refresh whenever you change the video, frame, block or range.</p>
+<div id="cmp" class="card"></div></section>
+
+<section id="learn"><h2>Learning and explanation</h2><div class="card">
+<details open><summary>Basics</summary><p><b>Block matching</b> compares a small square of pixels against shifted squares of another frame. <b>Motion estimation</b> is finding which shift fits best. The <b>reference block</b> is the block (here 8×8) you picked in the current frame. The <b>search area</b> is the region of the previous frame we may look in: the block’s own position ± <i>w</i> pixels, so (2w+1)² possible shifts. <b>SAD</b> = sum of |current pixel − candidate pixel| over the block; 0 means identical. The <b>motion vector</b> (dx,dy) is the shift of the best candidate relative to the reference block’s own position, i.e. where in the previous frame the block came from. Example: best match at (−2,0) means the object was 2 px to the left in the previous frame. You can switch the metric: <b>MAD</b> = SAD ÷ N² (average error per pixel), <b>MSD</b> = average of squared differences, which punishes big errors more. The Cross Search stationary threshold becomes 4·N² for SAD, 4 for MAD and 16 for MSD.</p></details>
+<details><summary>One-at-a-Time (OTA)</summary><p>Horizontal stage: test the centre and its left/right neighbours. If the centre is lowest, go to the vertical stage. Otherwise keep stepping in the better direction until the next point is worse. Then repeat in the vertical direction from the best horizontal point. <i>Good:</i> very few computations. <i>Bad:</i> match quality can be poor, because it can get stuck when the SAD surface is diagonal.</p></details>
+<details><summary>Ghanbari’s Cross Search (as implemented)</summary><ol>
+<li><b>Step 1:</b> compute SAD at (0,0). If it is below threshold T, the block is stationary: stop. (T = 4 per pixel, i.e. SAD &lt; 4·N², from the paper’s “4 out of 256” rule for 8×8 blocks.)</li>
+<li><b>Step 2:</b> centre (m,n) = (0,0); step size p = w/2.</li>
+<li><b>Steps 3–4:</b> move (i,j) to (m,n), then evaluate the five points (i,j), (i−p,j−p), (i−p,j+p), (i+p,j−p), (i+p,j+p): an <b>X</b> shape, not a +. The minimum becomes the new (m,n).</li>
+<li><b>Step 5:</b> if p = 1 go to Step 6, otherwise halve p and repeat from Step 3.</li>
+<li><b>Step 6:</b> if the final minimum is (i,j), (i−1,j−1) or (i+1,j+1) use Step 7, else Step 8.</li>
+<li><b>Step 7:</b> evaluate the Greek cross (+) around (m,n): (m±1,n), (m,n±1).</li>
+<li><b>Step 8:</b> evaluate the St Andrew’s cross (X) around (m,n): (m±1,n±1).</li>
+<li>The lowest SAD among the final points is the result. For w = 4 or 8 this costs 5+4·log₂w = 13 or 17 SADs. Points outside the frame or the ±w window are skipped. Positions are counted once even if requested twice.</li></ol>
+<i>Good:</i> logarithmic cost. <i>Bad:</i> about a quarter of the window boundary is never tested, and it can miss the global minimum.</details>
+<details><summary>Full Search</summary><p>Evaluates all (2w+1)² shifts and keeps the lowest SAD, so it <b>always finds the global minimum</b>, but it is the slowest. Ties are resolved toward the shift closest to (0,0). The other two algorithms use “centre first” tie-breaking, so on ties the coordinates may differ even when the minimum SAD is equal.</p></details>
+<p class="muted">Sources: M. Ghanbari, “The Cross-Search Algorithm for Motion Estimation,” IEEE Trans. Commun., vol. 38, no. 7, 1990; OTA description from the course notes (§2.6).</p></div></section>
+
+<div id="tip"></div>
+
+<!-- Load order matters: each file may use anything defined above it. -->
+<script src="js/config.js"></script>
+<script src="js/scenes.js"></script>
+<script src="js/state.js"></script>
+<script src="js/metrics.js"></script>
+<script src="js/algorithms/common.js"></script>
+<script src="js/algorithms/ota.js"></script>
+<script src="js/algorithms/csa.js"></script>
+<script src="js/algorithms/full.js"></script>
+<script src="js/selectors.js"></script>
+<script src="js/renderer.js"></script>
+<script src="js/panels.js"></script>
+<script src="js/benchmark.js"></script>
+<script src="js/controller.js"></script>
+<script src="js/main.js"></script>
+</body></html>
